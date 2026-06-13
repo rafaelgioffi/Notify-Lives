@@ -7,12 +7,13 @@ from playwright.sync_api import sync_playwright
 # --- CONFIGURAÇÕES ---
 mensagem = """Fala galera! Tudo bem com vcs? Estamos ao vivo jogando Heroes Olden Era!
 O melhor conteúdo sobre HOMM:OE do Brasil!
+O bicho tá pegando na campanha... 😅
 
 Cola lá:
 🟣 https://twitch.tv/CabruncoGamesBR
 🟢 https://kick.com/CabruncoGames"""
-# grupos_whatsapp = ["RG Tech Brasil", "RG Tech Brasil 2"]
-grupos_whatsapp = ["Teste 01", "Teste 02"]
+grupos_whatsapp = ["RG Tech Brasil", "RG Tech Brasil 2"]
+#grupos_whatsapp = ["Teste 01", "Teste 02"]
 # Coloque a URL direta dos grupos do Facebook aqui:
 grupos_facebook = ["https://www.facebook.com/cabruncogames/"] 
 # Habilita ou desabilita o compartilhamento automático em grupos:
