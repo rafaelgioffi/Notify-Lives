@@ -1,7 +1,11 @@
 import pyautogui
+pyautogui.FAILSAFE = False
 import time
 import os
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import pyperclip
+import subprocess
 from playwright.sync_api import sync_playwright
 
 # --- CONFIGURAÇÕES ---
@@ -12,7 +16,7 @@ O bicho tá pegando na campanha... 😅
 Cola lá:
 🟣 https://twitch.tv/CabruncoGamesBR
 🟢 https://kick.com/CabruncoGames"""
-grupos_whatsapp = ["RG Tech Brasil", "RG Tech Brasil 2"]
+grupos_whatsapp = ["RG Tech Brasil -", "RG Tech Brasil 2 -", "PENCHINCHA"]
 #grupos_whatsapp = ["Teste 01", "Teste 02"]
 # Coloque a URL direta dos grupos do Facebook aqui:
 grupos_facebook = ["https://www.facebook.com/cabruncogames/"] 
@@ -24,10 +28,25 @@ compartilhar_grupos_facebook = [
     "Heroes Of Might And Magic III: Horn Of The ABYSS",
     "Heroes of Might & Magic: Olden Era"
 ]
+
+# Imagem/Vídeo para o Instagram (se for vídeo curto, vira Reels):
+caminho_imagem = os.path.join(os.getcwd(), "live_imagem.png")
     
 # --- PARTE 1: WHATSAPP DESKTOP (RPA Simples) ---
 def disparar_whatsapp():
     print("Iniciando disparo no WhatsApp...")
+    
+    # Copia a imagem para a área de transferência usando PowerShell
+    if os.path.exists(caminho_imagem):
+        comando_ps = f"""
+        Add-Type -AssemblyName System.Windows.Forms
+        $img = [System.Drawing.Image]::FromFile('{caminho_imagem}')
+        [System.Windows.Forms.Clipboard]::SetImage($img)
+        """
+        subprocess.run(['powershell', '-command', comando_ps])
+        print("Imagem copiada para a área de transferência.")
+    else:
+        print(f"⚠️ Imagem '{caminho_imagem}' não encontrada!")
     
     # O truque de mestre: forçar o Windows a chamar o WhatsApp para a frente
     os.system("start whatsapp://")
@@ -42,7 +61,12 @@ def disparar_whatsapp():
         pyautogui.press('enter') # Entra no grupo
         time.sleep(1)
         
-        # Solução para mensagens incompletas e rápidas: Copiar e Colar
+        # 1. Cola a imagem
+        if os.path.exists(caminho_imagem):
+            pyautogui.hotkey('ctrl', 'v')
+            time.sleep(2) # Aguarda a tela de anexo carregar
+        
+        # 2. Solução para mensagens incompletas e rápidas: Copiar e Colar (como legenda)
         pyperclip.copy(mensagem)
         pyautogui.hotkey('ctrl', 'v')
         time.sleep(1)
@@ -111,6 +135,23 @@ def disparar_facebook():
                         # Insere a mensagem
                         page.keyboard.insert_text(mensagem) 
                         page.wait_for_timeout(2000)
+                        
+                        # Adiciona a imagem
+                        if os.path.exists(caminho_imagem):
+                            try:
+                                with page.expect_file_chooser(timeout=5000) as fc_info:
+                                    # Tenta clicar no botão de Foto/vídeo
+                                    botao_foto = page.locator("[aria-label='Foto/vídeo']").first
+                                    if not botao_foto.is_visible():
+                                        botao_foto = page.locator("text='Foto/vídeo'").first
+                                    botao_foto.click()
+                                
+                                file_chooser = fc_info.value
+                                file_chooser.set_files(caminho_imagem)
+                                print("Imagem anexada no Facebook.")
+                                page.wait_for_timeout(4000) # Aguarda upload da imagem
+                            except Exception as e:
+                                print(f"⚠️ Não foi possível anexar a imagem no Facebook: {e}")
                         
                         # Clica em Avançar (comentário corrigido de Publicar)
                         botao_avancar = page.locator("div[aria-label='Avançar']").first
@@ -182,8 +223,196 @@ def disparar_facebook():
         finally:
             context.close()
 
+# --- PARTE 3: INSTAGRAM (Playwright) ---
+def disparar_instagram():
+    print("Iniciando disparo no Instagram...")
+    
+    perfil_bot = os.path.join(os.getcwd(), "perfil_chrome_bot")
+    
+    if not os.path.exists(caminho_imagem):
+        print(f"⚠️ ERRO: Imagem '{caminho_imagem}' não encontrada! Pulo Instagram.")
+        return
+
+    with sync_playwright() as p:
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=perfil_bot,
+                channel="chrome",
+                headless=False,
+                no_viewport=True,
+                locale="pt-BR"
+            )
+            
+            page = context.pages[0] if context.pages else context.new_page()
+            page.goto("https://www.instagram.com/")
+            page.wait_for_timeout(5000)
+            
+            # --- PAUSA PARA LOGIN SE NECESSÁRIO ---
+            if page.locator("input[name='username']").first.is_visible() or page.locator("text='Entrar'").first.is_visible():
+                print("\n" + "="*60)
+                print("⚠️ O INSTAGRAM ESTÁ PEDINDO LOGIN!")
+                print("👉 Vá para a janela do Chrome que o bot abriu e faça o login.")
+                print("⏳ O script está pausado aguardando você terminar...")
+                input("👉 APERTE 'ENTER' AQUI NESTE TERMINAL APÓS LOGAR PARA CONTINUAR...")
+                print("="*60 + "\n")
+                page.goto("https://www.instagram.com/")
+                page.wait_for_timeout(5000)
+
+            # Lidar com popups "Ativar notificações" ou "Salvar informações" (se aparecerem)
+            try:
+                if page.locator("text='Agora não'").first.is_visible():
+                    page.locator("text='Agora não'").first.click(timeout=3000)
+                    page.wait_for_timeout(2000)
+                if page.locator("text='Agora não'").first.is_visible():
+                    page.locator("text='Agora não'").first.click(timeout=3000)
+                    page.wait_for_timeout(2000)
+            except Exception:
+                pass
+
+            try:
+                # Clica em Criar
+                botao_criar = page.locator("text='Criar'").first
+                if not botao_criar.is_visible():
+                    botao_criar = page.locator("text='Create'").first
+                if not botao_criar.is_visible():
+                    # Fallback para aria-label svg
+                    botao_criar = page.locator("svg[aria-label='Nova publicação'], svg[aria-label='New post']").first
+                
+                botao_criar.click(timeout=10000)
+                page.wait_for_timeout(2000)
+                
+                # Se abrir um submenu "Publicação", clica nela
+                botao_publicacao = page.locator("text='Publicação'").first
+                if botao_publicacao.is_visible():
+                    botao_publicacao.click()
+                    page.wait_for_timeout(2000)
+
+                # Fazer upload do arquivo
+                with page.expect_file_chooser() as fc_info:
+                    page.locator("text='Selecionar do computador'").first.click()
+                file_chooser = fc_info.value
+                file_chooser.set_files(caminho_imagem)
+                
+                page.wait_for_timeout(3000)
+                
+                # Avançar (Filtros)
+                page.locator("text='Avançar'").first.click()
+                page.wait_for_timeout(2000)
+                
+                # Avançar (Ajustes)
+                page.locator("text='Avançar'").first.click()
+                page.wait_for_timeout(2000)
+                
+                # Escrever legenda
+                caixa_legenda = page.locator("div[aria-label='Escreva uma legenda...']").first
+                if not caixa_legenda.is_visible():
+                    caixa_legenda = page.locator("textarea").first
+                caixa_legenda.click()
+                page.keyboard.insert_text(mensagem)
+                page.wait_for_timeout(2000)
+                
+                # Compartilhar
+                page.locator("text='Compartilhar'").first.click()
+                print("Publicando no Instagram...")
+                
+                # Aguarda confirmação
+                page.wait_for_selector("text='Sua publicação foi compartilhada.'", timeout=20000)
+                print("✅ Postado no Instagram com sucesso!")
+                
+                page.wait_for_timeout(2000)
+                
+            except Exception as e:
+                print(f"Erro ao postar no Instagram: {e}")
+                caminho_erro = os.path.join(os.getcwd(), "erro_instagram.png")
+                page.screenshot(path=caminho_erro)
+                print(f"📸 Print salvo em: {caminho_erro} com o detalhe do erro.")
+
+        except Exception as e:
+            print(f"ERRO DE CONEXÃO NO INSTAGRAM: {e}")
+        finally:
+            context.close()
+
+# --- PARTE 4: TIKTOK (Playwright) ---
+def disparar_tiktok():
+    print("Iniciando disparo no TikTok...")
+    
+    perfil_bot = os.path.join(os.getcwd(), "perfil_chrome_bot")
+    
+    if not os.path.exists(caminho_imagem):
+        print(f"⚠️ ERRO: Imagem '{caminho_imagem}' não encontrada! Pulo TikTok.")
+        return
+
+    with sync_playwright() as p:
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=perfil_bot,
+                channel="chrome",
+                headless=False,
+                no_viewport=True,
+                locale="pt-BR"
+            )
+            
+            page = context.pages[0] if context.pages else context.new_page()
+            
+            # Vai direto para a página de upload do Creator Center
+            page.goto("https://www.tiktok.com/creator-center/upload?scene=creator_center")
+            page.wait_for_timeout(8000) # TikTok é pesado
+            
+            if page.locator("text='Entrar'").first.is_visible() or page.url.startswith("https://www.tiktok.com/login"):
+                print("\n" + "="*60)
+                print("⚠️ O TIKTOK ESTÁ PEDINDO LOGIN!")
+                print("👉 Vá para a janela do Chrome que o bot abriu e faça o login manualmente.")
+                print("⏳ O script está pausado aguardando você terminar...")
+                input("👉 APERTE 'ENTER' AQUI NESTE TERMINAL APÓS LOGAR PARA CONTINUAR...")
+                print("="*60 + "\n")
+                page.goto("https://www.tiktok.com/creator-center/upload?scene=creator_center")
+                page.wait_for_timeout(8000)
+
+            try:
+                print("Procurando área de upload de arquivo no TikTok...")
+                page.wait_for_selector("input[type='file']", timeout=15000, state="attached")
+                input_file = page.locator("input[type='file']").first
+                input_file.set_files(caminho_imagem)
+                print("Arquivo selecionado! Aguardando processamento do upload...")
+                page.wait_for_timeout(10000)
+                
+                # Preenche a legenda
+                legenda_box = page.locator(".DraftEditor-root").first
+                if not legenda_box.is_visible():
+                    legenda_box = page.locator("[role='combobox']").first
+                    
+                if legenda_box.is_visible():
+                    legenda_box.click()
+                    page.keyboard.insert_text(mensagem)
+                    page.wait_for_timeout(2000)
+                else:
+                    print("⚠️ Não achei a caixa de legenda no TikTok.")
+                
+                # Clica em Publicar
+                botao_postar = page.locator("text='Publicar'").first
+                if botao_postar.is_visible():
+                    botao_postar.click()
+                    print("Botão publicar clicado!")
+                    page.wait_for_timeout(10000)
+                    print("✅ Postado no TikTok com sucesso!")
+                else:
+                    print("⚠️ Não achei o botão Publicar no TikTok!")
+                    
+            except Exception as e:
+                print(f"Erro ao postar no TikTok: {e}")
+                caminho_erro = os.path.join(os.getcwd(), "erro_tiktok.png")
+                page.screenshot(path=caminho_erro)
+                print(f"📸 Print salvo em: {caminho_erro} com o detalhe do erro.")
+
+        except Exception as e:
+            print(f"ERRO DE CONEXÃO NO TIKTOK: {e}")
+        finally:
+            context.close()
+
 # --- EXECUÇÃO ---
 if __name__ == "__main__":
-    disparar_whatsapp()
-    disparar_facebook()
+    # disparar_whatsapp()
+    # disparar_facebook()
+    disparar_instagram()
+    disparar_tiktok()
     print("Automação concluída! Boa live!")
