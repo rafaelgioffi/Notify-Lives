@@ -6,46 +6,23 @@ import sys
 sys.stdout.reconfigure(encoding='utf-8')
 import pyperclip
 import subprocess
+import argparse
 from playwright.sync_api import sync_playwright
-
-# --- CONFIGURAÇÕES ---
-mensagem = """Fala galera! Tudo bem com vcs? Estamos ao vivo jogando Heroes Olden Era!
-O melhor conteúdo sobre HOMM:OE do Brasil!
-O bicho tá pegando na campanha... 😅
-
-Cola lá:
-🟣 https://twitch.tv/CabruncoGamesBR
-🟢 https://kick.com/CabruncoGames"""
-grupos_whatsapp = ["RG Tech Brasil -", "RG Tech Brasil 2 -", "PENCHINCHA"]
-#grupos_whatsapp = ["Teste 01", "Teste 02"]
-# Coloque a URL direta dos grupos do Facebook aqui:
-grupos_facebook = ["https://www.facebook.com/cabruncogames/"] 
-# Habilita ou desabilita o compartilhamento automático em grupos:
-habilitar_compartilhamento_grupos = True 
-# Nomes exatos dos grupos para compartilhar o post automaticamente:
-compartilhar_grupos_facebook = [
-    "Heroes of Might and Magic 3 Online",
-    "Heroes Of Might And Magic III: Horn Of The ABYSS",
-    "Heroes of Might & Magic: Olden Era"
-]
-
-# Imagem/Vídeo para o Instagram (se for vídeo curto, vira Reels):
-caminho_imagem = os.path.join(os.getcwd(), "live_imagem.png")
+from perfis import PERFIS, obter_perfil
+from obs_integration import atualizar_textos_obs
     
+# --- PARTE 0: GERAR VÍDEO ANIMADO (REMOVIDO) ---
+# A geração de vídeo foi removida pois você passará a usar vídeos gerados por IA.
+
 # --- PARTE 1: WHATSAPP DESKTOP (RPA Simples) ---
-def disparar_whatsapp():
+def disparar_whatsapp(config):
     print("Iniciando disparo no WhatsApp...")
+    mensagem = config["mensagem"]
+    grupos_whatsapp = config["grupos_whatsapp"]
+    caminho_imagem = config["caminho_imagem"]
     
-    # Copia a imagem para a área de transferência usando PowerShell
-    if os.path.exists(caminho_imagem):
-        comando_ps = f"""
-        Add-Type -AssemblyName System.Windows.Forms
-        $img = [System.Drawing.Image]::FromFile('{caminho_imagem}')
-        [System.Windows.Forms.Clipboard]::SetImage($img)
-        """
-        subprocess.run(['powershell', '-command', comando_ps])
-        print("Imagem copiada para a área de transferência.")
-    else:
+    # Verifica se a imagem existe
+    if not os.path.exists(caminho_imagem):
         print(f"⚠️ Imagem '{caminho_imagem}' não encontrada!")
     
     # O truque de mestre: forçar o Windows a chamar o WhatsApp para a frente
@@ -53,6 +30,16 @@ def disparar_whatsapp():
     time.sleep(5) # Aumentei o tempo de espera para o WhatsApp carregar bem
     
     for grupo in grupos_whatsapp:
+        # Repõe a imagem na área de transferência para cada iteração, 
+        # pois o pyperclip.copy da mensagem a sobrescreve!
+        if os.path.exists(caminho_imagem):
+            comando_ps = f"""
+            Add-Type -AssemblyName System.Windows.Forms
+            $img = [System.Drawing.Image]::FromFile('{caminho_imagem}')
+            [System.Windows.Forms.Clipboard]::SetImage($img)
+            """
+            subprocess.run(['powershell', '-command', comando_ps])
+
         pyautogui.hotkey('ctrl', 'f') # Foca na busca
         time.sleep(1)
         pyautogui.write(grupo, interval=0.05) # Digita mais devagar
@@ -76,8 +63,13 @@ def disparar_whatsapp():
         time.sleep(1)
 
 # --- PARTE 2: FACEBOOK (Playwright via CDP) ---
-def disparar_facebook():
+def disparar_facebook(config):
     print("Iniciando disparo no Facebook...")
+    mensagem = config["mensagem"]
+    grupos_facebook = config["grupos_facebook"]
+    caminho_imagem = config["caminho_imagem"]
+    habilitar_compartilhamento_grupos = config["habilitar_compartilhamento_grupos"]
+    compartilhar_grupos_facebook = config["compartilhar_grupos_facebook"]
     
     # Cria uma pasta isolada para salvar o login do bot. Evita a falha de porta CDP.
     perfil_bot = os.path.join(os.getcwd(), "perfil_chrome_bot")
@@ -89,7 +81,9 @@ def disparar_facebook():
                 user_data_dir=perfil_bot,
                 channel="chrome", # Usa o Google Chrome padrão
                 headless=False,
-                no_viewport=True
+                viewport={"width": 1920, "height": 1080},
+                args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                ignore_default_args=["--enable-automation"]
             )
             
             # Pega a aba padrão que foi aberta
@@ -141,25 +135,44 @@ def disparar_facebook():
                             try:
                                 with page.expect_file_chooser(timeout=5000) as fc_info:
                                     # Tenta clicar no botão de Foto/vídeo
-                                    botao_foto = page.locator("[aria-label='Foto/vídeo']").first
+                                    botao_foto = page.locator("div[aria-label='Foto/vídeo']").first
                                     if not botao_foto.is_visible():
                                         botao_foto = page.locator("text='Foto/vídeo'").first
-                                    botao_foto.click()
+                                    if not botao_foto.is_visible():
+                                        # Alternativa novo layout do Facebook
+                                        botao_foto = page.locator("div[aria-label='Adicionar à sua publicação']").first
+                                    botao_foto.click(force=True)
                                 
                                 file_chooser = fc_info.value
                                 file_chooser.set_files(caminho_imagem)
                                 print("Imagem anexada no Facebook.")
                                 page.wait_for_timeout(4000) # Aguarda upload da imagem
                             except Exception as e:
-                                print(f"⚠️ Não foi possível anexar a imagem no Facebook: {e}")
+                                print(f"⚠️ Não foi possível anexar a imagem no Facebook com clique: {e}")
+                                print("Tentando setar o arquivo via input oculto...")
+                                try:
+                                    input_file = page.locator("input[type='file'][accept*='image']").first
+                                    input_file.set_files(caminho_imagem)
+                                    print("Imagem anexada no Facebook (via input).")
+                                    page.wait_for_timeout(4000)
+                                except Exception as e2:
+                                    print(f"⚠️ Falha total ao anexar imagem no Facebook: {e2}")
                         
                         # Clica em Avançar (comentário corrigido de Publicar)
-                        botao_avancar = page.locator("div[aria-label='Avançar']").first
-                        if not botao_avancar.is_visible():
-                            botao_avancar = page.locator("text='Avançar'").last
-                        
-                        botao_avancar.click()
-                        page.wait_for_timeout(2000) # Aguarda popup carregar
+                        try:
+                            botao_avancar = page.locator("div[aria-label='Avançar']").first
+                            if not botao_avancar.is_visible():
+                                botao_avancar = page.locator("text='Avançar'").last
+                            
+                            botao_avancar.click(timeout=8000)
+                            page.wait_for_timeout(2000) # Aguarda popup carregar
+                        except Exception as e_avancar:
+                            print("\n" + "="*60)
+                            print("⚠️ O FACEBOOK DEMOROU OU DEU TIMEOUT NO BOTÃO DE AVANÇAR!")
+                            print("Se você selecionou o vídeo/imagem manualmente, finalize a postagem você mesmo agora.")
+                            input("👉 APERTE 'ENTER' AQUI NESTE TERMINAL APÓS CONCLUIR PARA IR PARA A PRÓXIMA REDE...")
+                            print("="*60 + "\n")
+                            continue # Pula o resto das etapas deste grupo/página, pois o usuário fará manual
                         
                         falhou_ao_marcar_grupos = False
                         
@@ -224,8 +237,10 @@ def disparar_facebook():
             context.close()
 
 # --- PARTE 3: INSTAGRAM (Playwright) ---
-def disparar_instagram():
+def disparar_instagram(config):
     print("Iniciando disparo no Instagram...")
+    mensagem = config["mensagem"]
+    caminho_imagem = config["caminho_imagem"]
     
     perfil_bot = os.path.join(os.getcwd(), "perfil_chrome_bot")
     
@@ -239,8 +254,10 @@ def disparar_instagram():
                 user_data_dir=perfil_bot,
                 channel="chrome",
                 headless=False,
-                no_viewport=True,
-                locale="pt-BR"
+                viewport={"width": 1920, "height": 1080},
+                locale="pt-BR",
+                args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                ignore_default_args=["--enable-automation"]
             )
             
             page = context.pages[0] if context.pages else context.new_page()
@@ -248,10 +265,11 @@ def disparar_instagram():
             page.wait_for_timeout(5000)
             
             # --- PAUSA PARA LOGIN SE NECESSÁRIO ---
-            if page.locator("input[name='username']").first.is_visible() or page.locator("text='Entrar'").first.is_visible():
+            while page.locator("input[name='username']").first.is_visible() or page.locator("text='Entrar'").first.is_visible() or "challenge" in page.url:
                 print("\n" + "="*60)
-                print("⚠️ O INSTAGRAM ESTÁ PEDINDO LOGIN!")
-                print("👉 Vá para a janela do Chrome que o bot abriu e faça o login.")
+                print("⚠️ O INSTAGRAM ESTÁ PEDINDO LOGIN OU RESOLVER UM CAPTCHA!")
+                print("👉 Vá para a janela do Chrome que o bot abriu, faça o login e resolva o 'Não sou robô'.")
+                print("👉 SÓ VOLTE AQUI E APERTE ENTER QUANDO ESTIVER VENDO A PÁGINA INICIAL DO SEU INSTAGRAM!")
                 print("⏳ O script está pausado aguardando você terminar...")
                 input("👉 APERTE 'ENTER' AQUI NESTE TERMINAL APÓS LOGAR PARA CONTINUAR...")
                 print("="*60 + "\n")
@@ -271,14 +289,32 @@ def disparar_instagram():
 
             try:
                 # Clica em Criar
-                botao_criar = page.locator("text='Criar'").first
-                if not botao_criar.is_visible():
-                    botao_criar = page.locator("text='Create'").first
-                if not botao_criar.is_visible():
-                    # Fallback para aria-label svg
-                    botao_criar = page.locator("svg[aria-label='Nova publicação'], svg[aria-label='New post']").first
+                try:
+                    botao_criar = page.get_by_role("link", name="Nova publicação").first
+                    if not botao_criar.is_visible():
+                        botao_criar = page.locator("svg[aria-label='Nova publicação']").first
+                    if not botao_criar.is_visible():
+                        botao_criar = page.locator("text='Criar'").first
+                        
+                    if botao_criar.is_visible():
+                        botao_criar.click(force=True, timeout=5000)
+                    else:
+                        raise Exception("Botão de Criar não está visível.")
+                except Exception as e_criar:
+                    print("\n" + "="*60)
+                    print("⚠️ O INSTAGRAM NÃO MOSTROU O BOTÃO DE CRIAR!")
+                    print("Isso geralmente acontece se houver um CAPTCHA de segurança (reCAPTCHA) bloqueando a tela.")
+                    print("👉 Vá para a janela do Chrome que o bot abriu e resolva o desafio de imagens.")
+                    print("⏳ O script está pausado aguardando...")
+                    input("👉 APERTE 'ENTER' AQUI NESTE TERMINAL APÓS RESOLVER O CAPTCHA PARA CONTINUAR...")
+                    print("="*60 + "\n")
+                    # Após apertar enter, recarrega a página
+                    page.goto("https://www.instagram.com/")
+                    page.wait_for_timeout(5000)
+                    # Tenta pegar o botão de novo e clicar forçadamente
+                    botao_criar = page.locator("svg[aria-label='Nova publicação']").first
+                    botao_criar.click(force=True, timeout=5000)
                 
-                botao_criar.click(timeout=10000)
                 page.wait_for_timeout(2000)
                 
                 # Se abrir um submenu "Publicação", clica nela
@@ -333,13 +369,15 @@ def disparar_instagram():
             context.close()
 
 # --- PARTE 4: TIKTOK (Playwright) ---
-def disparar_tiktok():
+def disparar_tiktok(config):
     print("Iniciando disparo no TikTok...")
+    mensagem = config["mensagem"]
+    caminho_video = config["caminho_video"]
     
     perfil_bot = os.path.join(os.getcwd(), "perfil_chrome_bot")
     
-    if not os.path.exists(caminho_imagem):
-        print(f"⚠️ ERRO: Imagem '{caminho_imagem}' não encontrada! Pulo TikTok.")
+    if not os.path.exists(caminho_video):
+        print(f"⚠️ ERRO: Vídeo '{caminho_video}' não encontrado! Pulo TikTok.")
         return
 
     with sync_playwright() as p:
@@ -348,8 +386,10 @@ def disparar_tiktok():
                 user_data_dir=perfil_bot,
                 channel="chrome",
                 headless=False,
-                no_viewport=True,
-                locale="pt-BR"
+                viewport={"width": 1920, "height": 1080},
+                locale="pt-BR",
+                args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+                ignore_default_args=["--enable-automation"]
             )
             
             page = context.pages[0] if context.pages else context.new_page()
@@ -370,9 +410,25 @@ def disparar_tiktok():
 
             try:
                 print("Procurando área de upload de arquivo no TikTok...")
-                page.wait_for_selector("input[type='file']", timeout=15000, state="attached")
-                input_file = page.locator("input[type='file']").first
-                input_file.set_files(caminho_imagem)
+                
+                # Tenta clicar no botão de 'Selecionar vídeo' que abre a janela do sistema
+                try:
+                    with page.expect_file_chooser(timeout=10000) as fc_info:
+                        botao_selecionar = page.locator("text='Selecionar vídeo'").first
+                        if not botao_selecionar.is_visible():
+                            botao_selecionar = page.locator("text='Select video'").first
+                        
+                        # Clica forçado caso tenha alguma div por cima
+                        botao_selecionar.click(force=True)
+                    
+                    file_chooser = fc_info.value
+                    file_chooser.set_files(caminho_video)
+                except Exception as ex_btn:
+                    print("Não foi possível clicar no botão Selecionar vídeo, tentando fallback (input oculto)...")
+                    page.wait_for_selector("input[type='file']", timeout=10000, state="attached")
+                    input_file = page.locator("input[type='file']").first
+                    input_file.set_files(caminho_video)
+                
                 print("Arquivo selecionado! Aguardando processamento do upload...")
                 page.wait_for_timeout(10000)
                 
@@ -409,10 +465,37 @@ def disparar_tiktok():
         finally:
             context.close()
 
+
+def selecionar_perfil():
+    """Permite escolher o jogo sem usar parâmetros na linha de comando."""
+    opcoes = list(sorted(PERFIS.items()))
+    print("\nEscolha o perfil da live:\n")
+    for indice, (_, config) in enumerate(opcoes, start=1):
+        print(f"  {indice}. {config['nome']}")
+
+    while True:
+        escolha = input("\nDigite o número do perfil (ou 0 para sair): ").strip()
+        if escolha == "0":
+            raise SystemExit("Operação cancelada.")
+        if escolha.isdigit() and 1 <= int(escolha) <= len(opcoes):
+            return opcoes[int(escolha) - 1][1]
+        print("Opção inválida. Escolha um dos números exibidos.")
+
 # --- EXECUÇÃO ---
 if __name__ == "__main__":
-    # disparar_whatsapp()
-    # disparar_facebook()
-    disparar_instagram()
-    disparar_tiktok()
+    parser = argparse.ArgumentParser(description="Publica a divulgação da live em várias redes sociais.")
+    parser.add_argument(
+        "--perfil",
+        choices=sorted(PERFIS),
+        help="Perfil do jogo a divulgar. Se omitido, abre o menu interativo.",
+    )
+    args = parser.parse_args()
+    perfil = obter_perfil(args.perfil) if args.perfil else selecionar_perfil()
+
+    print(f"Perfil selecionado: {perfil['nome']}")
+    atualizar_textos_obs(perfil)
+    disparar_whatsapp(perfil)
+    disparar_facebook(perfil)
+    disparar_instagram(perfil)
+    disparar_tiktok(perfil)
     print("Automação concluída! Boa live!")

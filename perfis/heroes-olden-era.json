@@ -1,0 +1,18 @@
+{
+  "id": "heroes-olden-era",
+  "nome": "Heroes Olden Era",
+  "mensagem": "Fala galera! Tudo bem com vcs? Estamos ao vivo jogando Heroes Olden Era!\nO melhor conteúdo sobre HOMM:OE do Brasil!\nO bicho tá pegando na campanha... 😅\n\nCola lá:\n🟣 https://twitch.tv/CabruncoGamesBR\n🟢 https://kick.com/CabruncoGames",
+  "titulo_obs": "LIVE AGORA! BATALHAS ÉPICAS em Heroes Olden Era",
+  "descricao_obs": "Heroes Olden Era ao vivo! O melhor conteúdo sobre HOMM:OE do Brasil.",
+  "grupos_whatsapp": ["RG Tech Brasil -", "RG Tech Brasil 2 -"],
+  "grupos_facebook": ["https://www.facebook.com/cabruncogames/"],
+  "habilitar_compartilhamento_grupos": true,
+  "compartilhar_grupos_facebook": ["Heroes of Might and Magic 3 Online", "Heroes Of Might And Magic III: Horn Of The ABYSS", "Heroes of Might & Magic: Olden Era"],
+  "imagem": "perfis/heroes-olden-era/live_imagem.png",
+  "video": "perfis/heroes-olden-era/live_video_v4.mp4",
+  "obs": {
+    "habilitado": false,
+    "fonte_titulo": "Live - Título",
+    "fonte_descricao": "Live - Descrição"
+  }
+}

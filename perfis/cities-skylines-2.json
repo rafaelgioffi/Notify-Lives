@@ -1,0 +1,18 @@
+{
+  "id": "cities-skylines-2",
+  "nome": "Cities: Skylines 2",
+  "mensagem": "Fala galera! Estamos ao vivo construindo nossa cidade no Cities: Skylines 2! 🏙️\nVamos planejar, crescer e tentar não causar um caos no trânsito! 😅\n\nCola lá:\n🟣 https://twitch.tv/CabruncoGamesBR\n🟢 https://kick.com/CabruncoGames",
+  "titulo_obs": "LIVE AGORA! Construindo uma cidade no Cities: Skylines 2",
+  "descricao_obs": "Cities: Skylines 2 ao vivo! Planejamento urbano, trânsito e evolução da nossa cidade.",
+  "grupos_whatsapp": ["RG Tech Brasil -", "RG Tech Brasil 2 -"],
+  "grupos_facebook": ["https://www.facebook.com/cabruncogames/"],
+  "habilitar_compartilhamento_grupos": true,
+  "compartilhar_grupos_facebook": ["Cities Skyline 2"],
+  "imagem": "perfis/cities-skylines-2/live_imagem.png",
+  "video": "perfis/cities-skylines-2/live_video.mp4",
+  "obs": {
+    "habilitado": false,
+    "fonte_titulo": "Live - Título",
+    "fonte_descricao": "Live - Descrição"
+  }
+}
