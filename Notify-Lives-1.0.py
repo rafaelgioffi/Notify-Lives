@@ -10,6 +10,32 @@ import argparse
 from playwright.sync_api import sync_playwright
 from perfis import PERFIS, obter_perfil
 from obs_integration import atualizar_textos_obs
+from v2_app.channels.whatsapp_assisted import WhatsAppAssistedAdapter
+
+
+def disparar_whatsapp_v2(config):
+    """Envia para cada grupo, confirmando individualmente antes de prosseguir."""
+    print("Iniciando disparo assistido no WhatsApp...")
+    adapter = WhatsAppAssistedAdapter()
+    grupos = config.get("grupos_whatsapp", [])
+
+    for indice, grupo in enumerate(grupos, start=1):
+        print(f"WhatsApp: grupo {indice}/{len(grupos)} - {grupo}")
+        resultado = adapter.publish(
+            destination=grupo,
+            caption=config["mensagem"],
+            media_path=config.get("caminho_imagem"),
+            campaign_id=config.get("id", "manual"),
+        )
+        if resultado.success:
+            print(f"WhatsApp confirmado para '{grupo}'.")
+            continue
+
+        print(f"Falha no WhatsApp para '{grupo}': {resultado.error_message}")
+        resposta = input("Deseja seguir para o próximo grupo? [S/N]: ").strip().lower()
+        if resposta not in {"s", "sim", "y", "yes"}:
+            print("Envio do WhatsApp interrompido pelo usuário.")
+            return
     
 # --- PARTE 0: GERAR VÍDEO ANIMADO (REMOVIDO) ---
 # A geração de vídeo foi removida pois você passará a usar vídeos gerados por IA.
@@ -494,7 +520,7 @@ if __name__ == "__main__":
 
     print(f"Perfil selecionado: {perfil['nome']}")
     atualizar_textos_obs(perfil)
-    disparar_whatsapp(perfil)
+    disparar_whatsapp_v2(perfil)
     disparar_facebook(perfil)
     disparar_instagram(perfil)
     disparar_tiktok(perfil)
